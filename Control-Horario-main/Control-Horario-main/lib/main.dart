@@ -4,6 +4,8 @@ import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:flutter/gestures.dart';
 import 'gestion_page.dart';
+import 'services/api_service.dart';
+import 'pages/register_page.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -277,11 +279,16 @@ class _SplashPageState extends State<SplashPage>
       end: Offset.zero,
     ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic));
 
-    _navigationTimer = Timer(const Duration(milliseconds: 2400), () {
+    _navigationTimer = Timer(const Duration(milliseconds: 2400), () async {
       if (!mounted) return;
-      Navigator.of(
-        context,
-      ).pushReplacement(MaterialPageRoute(builder: (_) => const LoginPage()));
+      final isLoggedIn = await ApiService.isLoggedIn();
+      if (!mounted) return;
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) =>
+              isLoggedIn ? const HomeShellPage() : const LoginPage(),
+        ),
+      );
     });
   }
 
@@ -363,6 +370,7 @@ class _LoginPageState extends State<LoginPage> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _remember = true;
+  bool _loading = false;
 
   @override
   void dispose() {
@@ -371,11 +379,35 @@ class _LoginPageState extends State<LoginPage> {
     super.dispose();
   }
 
-  void _submit() {
+  Future<void> _submit() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
-    Navigator.of(
-      context,
-    ).pushReplacement(MaterialPageRoute(builder: (_) => const HomeShellPage()));
+
+    setState(() => _loading = true);
+    try {
+      await ApiService.login(
+        _emailController.text.trim(),
+        _passwordController.text,
+      );
+      if (!mounted) return;
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const HomeShellPage()),
+      );
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message), backgroundColor: Colors.red),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error de conexión: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   @override
@@ -485,9 +517,43 @@ class _LoginPageState extends State<LoginPage> {
                             SizedBox(
                               width: double.infinity,
                               child: ElevatedButton.icon(
-                                onPressed: _submit,
-                                icon: Icon(Icons.login),
-                                label: Text('Acceder al panel'),
+                                onPressed: _loading ? null : _submit,
+                                icon: _loading
+                                    ? const SizedBox(
+                                        width: 18,
+                                        height: 18,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: Colors.white,
+                                        ),
+                                      )
+                                    : const Icon(Icons.login),
+                                label: Text(
+                                  _loading ? 'Entrando…' : 'Acceder al panel',
+                                ),
+                              ),
+                            ),
+                            SizedBox(height: 12),
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                onPressed: () {
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) => const RegisterPage(),
+                                    ),
+                                  );
+                                },
+                                icon: Icon(
+                                  Icons.person_add_outlined,
+                                  color: AppColors.primaryTeal,
+                                ),
+                                label: Text(
+                                  'Crear cuenta nueva',
+                                  style: TextStyle(
+                                    color: AppColors.primaryTeal,
+                                  ),
+                                ),
                               ),
                             ),
                             SizedBox(height: 16),
@@ -520,7 +586,7 @@ class _LoginPageState extends State<LoginPage> {
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     const SnackBar(
                                       content: Text(
-                                        'Simulando biometrÃ­a... Funcionalidad en desarrollo.',
+                                        'Simulando biometría... Funcionalidad en desarrollo.',
                                       ),
                                     ),
                                   );
@@ -572,17 +638,44 @@ class _HomeShellPageState extends State<HomeShellPage> {
   int _currentIndex = 0;
   late final PageController _pageController;
   final List<RegistroHorario> _registros = [];
+  bool _cargandoHistorial = false;
 
   @override
   void initState() {
     super.initState();
     _pageController = PageController();
+    _cargarHistorial();
   }
 
   @override
   void dispose() {
     _pageController.dispose();
     super.dispose();
+  }
+
+  Future<void> _cargarHistorial() async {
+    setState(() => _cargandoHistorial = true);
+    try {
+      final historial = await ApiService.getHistorial();
+      final registrosCargados = historial.map((r) {
+        final fecha = DateTime.parse(r['fecha_hora'] as String);
+        final tipo = (r['tipo'] as String) == 'ENTRADA'
+            ? TipoRegistro.entrada
+            : TipoRegistro.salida;
+        return RegistroHorario(tipo: tipo, fecha: fecha);
+      }).toList();
+
+      // Ordenar de más reciente a más antiguo
+      registrosCargados.sort((a, b) => b.fecha.compareTo(a.fecha));
+
+      if (mounted) setState(() => _registros
+        ..clear()
+        ..addAll(registrosCargados));
+    } catch (_) {
+      // Si falla la carga del historial, seguimos con estado vacío
+    } finally {
+      if (mounted) setState(() => _cargandoHistorial = false);
+    }
   }
 
   bool get _jornadaAbierta {
@@ -621,10 +714,32 @@ class _HomeShellPageState extends State<HomeShellPage> {
     return total;
   }
 
-  void _registrar(TipoRegistro tipo) {
-    setState(() {
-      _registros.insert(0, RegistroHorario(tipo: tipo, fecha: DateTime.now()));
-    });
+  Future<void> _registrar(TipoRegistro tipo) async {
+    try {
+      if (tipo == TipoRegistro.entrada) {
+        await ApiService.ficharEntrada();
+      } else {
+        await ApiService.ficharSalida();
+      }
+      setState(() {
+        _registros.insert(0, RegistroHorario(tipo: tipo, fecha: DateTime.now()));
+      });
+    } on ApiException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.message), backgroundColor: Colors.red),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error de conexión: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   @override
@@ -1979,6 +2094,30 @@ class PerfilPage extends StatefulWidget {
 class _PerfilPageState extends State<PerfilPage> {
   bool _notificaciones = true;
   bool _resumenDiario = false;
+  String _username = '';
+  String _empresa = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _cargarDatosUsuario();
+  }
+
+  Future<void> _cargarDatosUsuario() async {
+    final username = await ApiService.getUsername() ?? '';
+    if (!mounted) return;
+    setState(() => _username = username);
+    try {
+      final me = await ApiService.getMe();
+      if (!mounted) return;
+      setState(() {
+        _username = me['username']?.toString() ?? username;
+        _empresa = me['empresa']?.toString() ?? '';
+      });
+    } catch (_) {
+      // Si falla la carga de datos, mantenemos el username guardado
+    }
+  }
 
   void _mostrarSelectorTemas(BuildContext context) {
     showModalBottomSheet(
@@ -2103,7 +2242,7 @@ class _PerfilPageState extends State<PerfilPage> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Usuario de prácticas',
+                            _username.isEmpty ? 'Usuario' : _username,
                             style: TextStyle(
                               fontWeight: FontWeight.w700,
                               fontSize: 18,
@@ -2112,7 +2251,7 @@ class _PerfilPageState extends State<PerfilPage> {
                           ),
                           SizedBox(height: 6),
                           Text(
-                            'control.horario@empresa.com',
+                            _empresa.isEmpty ? 'Empresa' : _empresa,
                             style: TextStyle(
                               color: AppColors.textSecondary,
                               fontSize: 14,
@@ -2292,7 +2431,9 @@ class _PerfilPageState extends State<PerfilPage> {
                       color: AppColors.warningOrange,
                     ),
                   ),
-                  onTap: () {
+                  onTap: () async {
+                    await ApiService.logout();
+                    if (!context.mounted) return;
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: Text('Sesión cerrada correctamente'),

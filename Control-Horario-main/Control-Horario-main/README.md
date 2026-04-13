@@ -6,6 +6,83 @@ Este repositorio ya está inicializado como proyecto Flutter para:
 - Web
 - Android
 
+## Arquitectura
+
+```
+/backend          → API FastAPI (Python)
+/Control-Horario-main/Control-Horario-main  → App Flutter
+```
+
+---
+
+## 🚀 Instalación y puesta en marcha
+
+### 1. Backend (FastAPI)
+
+```bash
+cd backend
+
+# Crear entorno virtual
+python -m venv venv
+source venv/bin/activate   # Windows: venv\Scripts\activate
+
+# Instalar dependencias
+pip install -r requirements.txt
+
+# Configurar variables de entorno
+cp .env.example .env
+# Edita .env y rellena DATABASE_URL y SECRET_KEY
+
+# Iniciar servidor
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
+```
+
+> **Nota:** Necesitas una base de datos PostgreSQL. Puedes usar [Supabase](https://supabase.com) (plan gratuito) o PostgreSQL local.
+
+La API queda disponible en `http://localhost:8000`.
+La documentación interactiva en `http://localhost:8000/docs`.
+
+### 2. Frontend (Flutter)
+
+#### Configurar URL del backend
+
+Edita `lib/config/app_config.dart`:
+
+```dart
+class AppConfig {
+  // Android emulator → 10.0.2.2:8000
+  // iOS simulator / desktop → localhost:8000
+  // Dispositivo físico en la misma red → IP de tu PC, p.ej. 192.168.1.100:8000
+  static const String backendUrl = 'http://10.0.2.2:8000';
+}
+```
+
+#### Instalar dependencias y ejecutar
+
+```bash
+cd "Control-Horario-main/Control-Horario-main"
+
+flutter pub get
+flutter run
+```
+
+---
+
+## Endpoints del backend
+
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| POST | `/register` | Crear nuevo usuario |
+| POST | `/login` | Iniciar sesión → devuelve JWT |
+| GET | `/me` | Datos del usuario autenticado |
+| POST | `/fichar-entrada` | Registrar entrada |
+| POST | `/fichar-salida` | Registrar salida |
+| GET | `/ver-mi-historial` | Ver historial de fichajes |
+| GET | `/descargar-excel` | Exportar a Excel |
+| GET | `/descargar-pdf` | Exportar a PDF |
+
+---
+
 ## Preparación de entorno Flutter (Linux)
 
 Este repositorio incluye un script para preparar el entorno local de Flutter sin `snap`.
