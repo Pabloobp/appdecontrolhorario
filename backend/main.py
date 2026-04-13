@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status, BackgroundTasks
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.responses import FileResponse
 from datetime import datetime, timedelta, timezone
@@ -80,11 +80,11 @@ class Usuario(Base):
 
 class RegistroHorario(Base):
     __tablename__ = "registros_horarios"
-    id = Column(String, primary_key=True, default=lambda: str(datetime.now().timestamp()))
+    id = Column(String, primary_key=True, default=lambda: str(datetime.now(timezone.utc).timestamp()))
     usuario = Column(String)
     empresa = Column(String)
     tipo = Column(String)  # ENTRADA o SALIDA
-    fecha_hora = Column(DateTime, default=datetime.now)
+    fecha_hora = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 # Crear las tablas en la base de datos
 Base.metadata.create_all(bind=engine)
@@ -137,7 +137,7 @@ async def get_me(username: str = Depends(get_current_username), db: Session = De
 
 @app.post("/fichar-entrada")
 async def fichar_entrada(username: str = Depends(get_current_username), db: Session = Depends(get_db)):
-    ahora = datetime.now()
+    ahora = datetime.now(timezone.utc)
     user_data = db.query(Usuario).filter(Usuario.username == username).first()
     
     if not user_data:
@@ -162,7 +162,7 @@ async def fichar_entrada(username: str = Depends(get_current_username), db: Sess
 
 @app.post("/fichar-salida")
 async def fichar_salida(username: str = Depends(get_current_username), db: Session = Depends(get_db)):
-    ahora = datetime.now()
+    ahora = datetime.now(timezone.utc)
     user_data = db.query(Usuario).filter(Usuario.username == username).first()
     
     if not user_data:
@@ -200,7 +200,11 @@ async def historial(username: str = Depends(get_current_username), db: Session =
 # --- SECCIÓN DE REPORTES (EXCEL Y PDF) ---
 
 @app.get("/descargar-excel")
-async def descargar_excel(username: str = Depends(get_current_username), db: Session = Depends(get_db)):
+async def descargar_excel(
+    background_tasks: BackgroundTasks,
+    username: str = Depends(get_current_username),
+    db: Session = Depends(get_db),
+):
     mis_datos = db.query(RegistroHorario).filter(RegistroHorario.usuario == username).all()
     
     if not mis_datos:
@@ -218,6 +222,7 @@ async def descargar_excel(username: str = Depends(get_current_username), db: Ses
     with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
         archivo_excel = tmp.name
     df.to_excel(archivo_excel, index=False)
+    background_tasks.add_task(os.unlink, archivo_excel)
     
     return FileResponse(
         path=archivo_excel,
@@ -226,7 +231,11 @@ async def descargar_excel(username: str = Depends(get_current_username), db: Ses
     )
 
 @app.get("/descargar-pdf")
-async def descargar_pdf(username: str = Depends(get_current_username), db: Session = Depends(get_db)):
+async def descargar_pdf(
+    background_tasks: BackgroundTasks,
+    username: str = Depends(get_current_username),
+    db: Session = Depends(get_db),
+):
     user_data = db.query(Usuario).filter(Usuario.username == username).first()
     if not user_data:
         raise HTTPException(status_code=401, detail="Usuario no encontrado")
@@ -251,6 +260,7 @@ async def descargar_pdf(username: str = Depends(get_current_username), db: Sessi
     with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
         archivo_pdf = tmp.name
     pdf.output(archivo_pdf)
+    background_tasks.add_task(os.unlink, archivo_pdf)
     
     return FileResponse(
         path=archivo_pdf,
