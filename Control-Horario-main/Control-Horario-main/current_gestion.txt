@@ -1,0 +1,654 @@
+import 'package:flutter/material.dart';
+import 'main.dart'; // To access AppColors
+
+class GestionPage extends StatefulWidget {
+  const GestionPage({super.key});
+
+  @override
+  State<GestionPage> createState() => _GestionPageState();
+}
+
+class _GestionPageState extends State<GestionPage> {
+  final ScrollController _scrollController = ScrollController();
+  final double _scrollZoneHeight = 50.0;
+  final double _scrollSpeed = 5.0;
+
+  void _checkScroll(DragUpdateDetails details) {
+    if (!mounted) return;
+
+    final RenderBox renderBox = context.findRenderObject() as RenderBox;
+    final double dy = renderBox.globalToLocal(details.globalPosition).dy;
+    final double height = renderBox.size.height;
+
+    if (dy < _scrollZoneHeight) {
+      if (_scrollController.hasClients &&
+          _scrollController.position.pixels > 0) {
+        _scrollController.animateTo(
+          _scrollController.position.pixels - _scrollSpeed,
+          duration: const Duration(milliseconds: 16),
+          curve: Curves.linear,
+        );
+      }
+    } else if (dy > height - _scrollZoneHeight) {
+      if (_scrollController.hasClients &&
+          _scrollController.position.pixels <
+              _scrollController.position.maxScrollExtent) {
+        _scrollController.animateTo(
+          _scrollController.position.pixels + _scrollSpeed,
+          duration: const Duration(milliseconds: 16),
+          curve: Curves.linear,
+        );
+      }
+    }
+  }
+
+  // Mock Data
+  List<Map<String, dynamic>> shifts = [
+    {
+      'id': 'shift1',
+      'time': '08:00 - 16:00',
+      'role': 'Desarrollador',
+      'location': 'Oficina Central',
+      'urgency': 'Alta',
+      'urgencyColor': AppColors.dangerRed,
+      'assignedTo': null,
+    },
+    {
+      'id': 'shift2',
+      'time': '14:00 - 22:00',
+      'role': 'Soporte TI',
+      'location': 'Remoto',
+      'urgency': 'Baja',
+      'urgencyColor': AppColors.successGreen,
+      'assignedTo': null,
+    },
+    {
+      'id': 'shift3',
+      'time': '09:00 - 18:00',
+      'role': 'Jefe de Proyecto',
+      'location': 'Sala de Juntas',
+      'urgency': 'Media',
+      'urgencyColor': AppColors.warningOrange,
+      'assignedTo': null,
+    },
+  ];
+
+  List<Map<String, dynamic>> employees = [
+    {
+      'name': 'Ana G.',
+      'initials': 'AG',
+      'available': true,
+      'color': AppColors.accentCoral,
+    },
+    {
+      'name': 'Carlos M.',
+      'initials': 'CM',
+      'available': true,
+      'color': AppColors.primaryTealLight,
+    },
+    {
+      'name': 'Lucía R.',
+      'initials': 'LR',
+      'available': false,
+      'color': AppColors.warningOrange,
+    },
+    {
+      'name': 'Pedro S.',
+      'initials': 'PS',
+      'available': true,
+      'color': AppColors.successGreen,
+    },
+  ];
+
+  bool _isEmployeeAssigned(String employeeName) {
+    return shifts.any((shift) => shift['assignedTo'] == employeeName);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      appBar: AppBar(
+        title: Text(
+          'Gesti�n de Turnos',
+          style: TextStyle(
+            color: AppColors.textPrimary,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        backgroundColor: AppColors.surface,
+        elevation: 0,
+        centerTitle: true,
+        leading: Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: Container(
+            decoration: BoxDecoration(
+              color: AppColors.primaryTealLight.withValues(alpha: 0.1),
+              shape: BoxShape.circle,
+            ),
+            child: IconButton(
+              icon: Icon(Icons.arrow_back, color: AppColors.primaryTealLight),
+              onPressed: () => Navigator.of(context).pop(),
+            ),
+          ),
+        ),
+      ),
+      body: SingleChildScrollView(
+        controller: _scrollController,
+        padding: const EdgeInsets.all(20.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildCalendarHeader(),
+            const SizedBox(height: 24),
+            _buildWeekStrip(),
+            const SizedBox(height: 32),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Turnos Vacantes',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppColors.primaryTealLight.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.touch_app,
+                        size: 14,
+                        color: AppColors.primaryTealLight,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Arrastra para asignar',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: AppColors.primaryTealLight,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            ...shifts.map((shift) => _buildShiftTarget(shift)),
+            const SizedBox(height: 32),
+            Text(
+              'Personal Disponible',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 16),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              clipBehavior: Clip.none,
+              child: Row(
+                children: employees
+                    .where((emp) => !_isEmployeeAssigned(emp['name']))
+                    .map((emp) {
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 16),
+                        child: Draggable<Map<String, dynamic>>(
+                          onDragUpdate: (details) => _checkScroll(details),
+                          data: emp,
+                          feedback: Material(
+                            color: Colors.transparent,
+                            child: Opacity(
+                              opacity: 0.8,
+                              child: Transform.scale(
+                                scale: 1.1,
+                                child: _buildAvatarContent(emp, true),
+                              ),
+                            ),
+                          ),
+                          childWhenDragging: Opacity(
+                            opacity: 0.3,
+                            child: _buildAvatarContent(emp, true),
+                          ),
+                          child: _buildAvatarContent(emp, true),
+                        ),
+                      );
+                    })
+                    .toList(),
+              ),
+            ),
+            const SizedBox(height: 100),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildShiftTarget(Map<String, dynamic> shift) {
+    bool isAssigned = shift['assignedTo'] != null;
+
+    return DragTarget<Map<String, dynamic>>(
+      onWillAcceptWithDetails: (details) =>
+          !isAssigned && (details.data['available'] == true),
+      onAcceptWithDetails: (details) {
+        final data = details.data;
+        setState(() {
+          shift['assignedTo'] = data['name'];
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${data['name']} asignado a ${shift['role']}'),
+            backgroundColor: AppColors.successGreen,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        );
+      },
+      builder: (context, candidateData, rejectedData) {
+        bool isHovering = candidateData.isNotEmpty;
+
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 300),
+          margin: const EdgeInsets.only(bottom: 16),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: isAssigned
+                ? AppColors.successGreen.withValues(alpha: 0.05)
+                : (isHovering
+                      ? AppColors.primaryTealLight.withValues(alpha: 0.1)
+                      : AppColors.surface),
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: isAssigned
+                    ? AppColors.successGreen.withValues(alpha: 0.1)
+                    : (isHovering
+                          ? AppColors.primaryTealLight.withValues(alpha: 0.2)
+                          : Colors.black.withValues(alpha: 0.03)),
+                blurRadius: isHovering ? 15 : 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+            border: Border.all(
+              color: isAssigned
+                  ? AppColors.successGreen
+                  : (isHovering
+                        ? AppColors.primaryTealLight
+                        : AppColors.border),
+              width: isHovering || isAssigned ? 2 : 1,
+            ),
+          ),
+          child: Column(
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        isAssigned ? Icons.check_circle : Icons.access_time,
+                        size: 20,
+                        color: isAssigned
+                            ? AppColors.successGreen
+                            : AppColors.textSecondary,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        shift['time'],
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (!isAssigned)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: (shift['urgencyColor'] as Color).withValues(
+                          alpha: 0.1,
+                        ),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: (shift['urgencyColor'] as Color).withValues(
+                            alpha: 0.3,
+                          ),
+                        ),
+                      ),
+                      child: Text(
+                        shift['urgency'],
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: shift['urgencyColor'],
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              const Divider(height: 24),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        shift['role'],
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                      Text(
+                        shift['location'],
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (isAssigned)
+                    _buildAssignedPill(shift['assignedTo'], shift['id'])
+                  else
+                    _buildEmptySlot(isHovering),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildEmptySlot(bool isHovering) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+      width: 50,
+      height: 50,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: isHovering ? AppColors.primaryTealLight : AppColors.border,
+          style: BorderStyle.solid,
+          width: 2,
+        ),
+        color: isHovering ? AppColors.surface : Colors.transparent,
+      ),
+      child: Center(
+        child: Icon(
+          Icons.add,
+          color: isHovering
+              ? AppColors.primaryTealLight
+              : AppColors.textSecondary.withValues(alpha: 0.5),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAssignedPill(String name, String shiftId) {
+    return InkWell(
+      onTap: () {
+        setState(() {
+          final shift = shifts.firstWhere((s) => s['id'] == shiftId);
+          shift['assignedTo'] = null;
+        });
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(30),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.05),
+              blurRadius: 4,
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 24,
+              height: 24,
+              decoration: BoxDecoration(
+                color: AppColors.primaryTealLight.withValues(alpha: 0.2),
+                shape: BoxShape.circle,
+                border: Border.all(color: AppColors.primaryTealLight),
+              ),
+              child: Icon(
+                Icons.person,
+                size: 16,
+                color: AppColors.primaryTeal,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              name,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: AppColors.dangerRed.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Icons.close, size: 12, color: AppColors.dangerRed),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAvatarContent(Map<String, dynamic> emp, bool showStatus) {
+    final bool available = emp['available'];
+    final Color empColor = emp['color'] ?? AppColors.primaryTealLight;
+
+    return Column(
+      children: [
+        Stack(
+          children: [
+            Container(
+              width: 65,
+              height: 65,
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                shape: BoxShape.circle,
+                border: Border.all(color: AppColors.border, width: 2),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppColors.primaryTeal.withValues(alpha: 0.1),
+                    blurRadius: 8,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: CircleAvatar(
+                backgroundColor: empColor.withValues(alpha: 0.2),
+                foregroundColor: empColor,
+                child: Text(
+                  emp['initials'],
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
+                ),
+              ),
+            ),
+            if (showStatus)
+              Positioned(
+                bottom: 0,
+                right: 0,
+                child: Container(
+                  width: 18,
+                  height: 18,
+                  decoration: BoxDecoration(
+                    color: available
+                        ? AppColors.successGreen
+                        : AppColors.textSecondary,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: AppColors.surface, width: 2),
+                  ),
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(
+          emp['name'],
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: available ? AppColors.textPrimary : AppColors.textSecondary,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCalendarHeader() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          'Marzo 2026',
+          style: TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+            color: AppColors.textPrimary,
+          ),
+        ),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: AppColors.primaryTealLight.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                Icons.calendar_today,
+                size: 16,
+                color: AppColors.primaryTealLight,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Semana 12',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: AppColors.primaryTealLight,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildWeekStrip() {
+    final days = [
+      {'short': 'Lun', 'num': 16},
+      {'short': 'Mar', 'num': 17},
+      {'short': 'Mi�', 'num': 18},
+      {'short': 'Jue', 'num': 19},
+      {'short': 'Vie', 'num': 20},
+    ];
+    return SizedBox(
+      height: 90,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        itemCount: days.length,
+        separatorBuilder: (context, index) => const SizedBox(width: 12),
+        itemBuilder: (context, index) {
+          final d = days[index];
+          final dayNum = d['num'] as int;
+          return _buildDayCard(
+            d['short'] as String,
+            dayNum.toString(),
+            _selectedDay == dayNum,
+            () => _changeDay(dayNum),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildDayCard(String day, String number, bool isSelected, VoidCallback onTap) {
+    return Container(
+      width: 65,
+      decoration: BoxDecoration(
+        color: isSelected ? AppColors.primaryTealLight : AppColors.surface,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          if (isSelected)
+            BoxShadow(
+              color: AppColors.primaryTealLight.withValues(alpha: 0.4),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            )
+          else
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.05),
+              blurRadius: 5,
+              offset: const Offset(0, 2),
+            ),
+        ],
+        border: isSelected ? null : Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            day,
+            style: TextStyle(
+              fontSize: 12,
+              color: isSelected
+                  ? AppColors.surface.withValues(alpha: 0.8)
+                  : AppColors.textSecondary,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            number,
+            style: TextStyle(
+              fontSize: 20,
+              color: isSelected ? AppColors.surface : AppColors.textPrimary,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
