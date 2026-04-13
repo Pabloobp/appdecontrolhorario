@@ -17,15 +17,26 @@ from database import get_db, Base, engine
 
 load_dotenv()
 
-SECRET_KEY = os.getenv("SECRET_KEY", "cambia-esta-clave-secreta-en-produccion-min-32-chars")
+_DEFAULT_SECRET = "cambia-esta-clave-secreta-en-produccion-min-32-chars"
+SECRET_KEY = os.getenv("SECRET_KEY", _DEFAULT_SECRET)
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "480"))
+
+import logging as _logging
+if SECRET_KEY == _DEFAULT_SECRET:
+    _logging.warning(
+        "⚠️  Usando SECRET_KEY por defecto. "
+        "Cambia SECRET_KEY en el archivo .env antes de usar en producción."
+    )
+
+# CORS: en producción, reemplaza ['*'] por la URL de tu frontend
+_ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
 
 app = FastAPI(title="Control Horario API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
