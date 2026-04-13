@@ -9,6 +9,7 @@ import pandas as pd
 from fpdf import FPDF
 import os
 import re
+import tempfile
 from dotenv import load_dotenv
 from passlib.context import CryptContext
 from jose import JWTError, jwt
@@ -51,6 +52,9 @@ def create_access_token(data: dict) -> str:
 def _safe_filename(username: str) -> str:
     """Devuelve un nombre de archivo seguro basado en el username."""
     return re.sub(r"[^\w\-]", "_", username)[:64]
+
+
+def get_current_username(token: str = Depends(oauth2_scheme)) -> str:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="No se pudo validar las credenciales",
@@ -211,10 +215,15 @@ async def descargar_excel(username: str = Depends(get_current_username), db: Ses
     
     df = pd.DataFrame(datos_formateados)
     safe_name = _safe_filename(username)
-    archivo_excel = f"reporte_{safe_name}.xlsx"
+    with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
+        archivo_excel = tmp.name
     df.to_excel(archivo_excel, index=False)
     
-    return FileResponse(path=archivo_excel, filename=archivo_excel, media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    return FileResponse(
+        path=archivo_excel,
+        filename=f"reporte_{safe_name}.xlsx",
+        media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    )
 
 @app.get("/descargar-pdf")
 async def descargar_pdf(username: str = Depends(get_current_username), db: Session = Depends(get_db)):
@@ -239,10 +248,15 @@ async def descargar_pdf(username: str = Depends(get_current_username), db: Sessi
         pdf.cell(0, 10, txt=linea, ln=True)
             
     safe_name = _safe_filename(username)
-    archivo_pdf = f"reporte_{safe_name}.pdf"
+    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+        archivo_pdf = tmp.name
     pdf.output(archivo_pdf)
     
-    return FileResponse(path=archivo_pdf, filename=archivo_pdf, media_type='application/pdf')
+    return FileResponse(
+        path=archivo_pdf,
+        filename=f"reporte_{safe_name}.pdf",
+        media_type='application/pdf',
+    )
 
 if __name__ == "__main__":
     import uvicorn
