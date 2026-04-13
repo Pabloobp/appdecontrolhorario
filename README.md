@@ -74,13 +74,13 @@ cd app
 flutter pub get
 ```
 
-Abre `lib/config/app_config.dart` y ajusta la URL del backend según donde vayas a ejecutar la app:
+La URL del backend se **detecta automáticamente** en `lib/config/app_config.dart` según la plataforma:
 
-| Plataforma | URL |
+| Plataforma | URL usada automáticamente |
 |---|---|
-| Android emulator | `http://10.0.2.2:8000` ✅ (por defecto) |
-| iOS simulator / Web | `http://localhost:8000` |
-| Dispositivo físico | `http://TU_IP_LOCAL:8000` (ej: `http://192.168.1.10:8000`) |
+| Android emulator | `http://10.0.2.2:8000` ✅ |
+| iOS simulator / Web / Desktop | `http://localhost:8000` ✅ |
+| Dispositivo físico | Edita `app_config.dart` y pon `http://TU_IP_LOCAL:8000` |
 
 ```bash
 # Ejecutar la app (elige dispositivo)
