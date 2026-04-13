@@ -1,13 +1,14 @@
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.responses import FileResponse
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from sqlalchemy import Column, String, DateTime
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 import pandas as pd
 from fpdf import FPDF
 import os
+import re
 from dotenv import load_dotenv
 from passlib.context import CryptContext
 from jose import JWTError, jwt
@@ -19,7 +20,12 @@ load_dotenv()
 app = FastAPI()
 
 # --- CONFIGURACIÓN JWT Y BCRYPT ---
-SECRET_KEY = os.getenv("SECRET_KEY", "cambia-esta-clave-secreta-en-produccion")
+SECRET_KEY = os.getenv("SECRET_KEY")
+if not SECRET_KEY:
+    raise RuntimeError(
+        "SECRET_KEY no está configurado. "
+        "Crea un archivo .env con SECRET_KEY=<valor aleatorio seguro>."
+    )
 JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "10080"))
 
@@ -37,12 +43,14 @@ def hash_password(password: str) -> str:
 
 def create_access_token(data: dict) -> str:
     to_encode = data.copy()
-    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=JWT_ALGORITHM)
 
 
-def get_current_username(token: str = Depends(oauth2_scheme)) -> str:
+def _safe_filename(username: str) -> str:
+    """Devuelve un nombre de archivo seguro basado en el username."""
+    return re.sub(r"[^\w\-]", "_", username)[:64]
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="No se pudo validar las credenciales",
@@ -202,7 +210,8 @@ async def descargar_excel(username: str = Depends(get_current_username), db: Ses
     } for r in mis_datos]
     
     df = pd.DataFrame(datos_formateados)
-    archivo_excel = f"reporte_{username}.xlsx"
+    safe_name = _safe_filename(username)
+    archivo_excel = f"reporte_{safe_name}.xlsx"
     df.to_excel(archivo_excel, index=False)
     
     return FileResponse(path=archivo_excel, filename=archivo_excel, media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
@@ -229,7 +238,8 @@ async def descargar_pdf(username: str = Depends(get_current_username), db: Sessi
         linea = f"{r.fecha_hora.strftime('%Y-%m-%d %H:%M:%S')} --- Accion: {r.tipo}"
         pdf.cell(0, 10, txt=linea, ln=True)
             
-    archivo_pdf = f"reporte_{username}.pdf"
+    safe_name = _safe_filename(username)
+    archivo_pdf = f"reporte_{safe_name}.pdf"
     pdf.output(archivo_pdf)
     
     return FileResponse(path=archivo_pdf, filename=archivo_pdf, media_type='application/pdf')
