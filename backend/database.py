@@ -6,10 +6,14 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Connection string de Supabase desde el .env
-DATABASE_URL = os.getenv("DATABASE_URL")
+# Usa la URL del .env. Si no hay, usa SQLite local como fallback
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./controlhorario.db")
 
-engine = create_engine(DATABASE_URL)
+connect_args = {}
+if DATABASE_URL.startswith("sqlite"):
+    connect_args = {"check_same_thread": False}
+
+engine = create_engine(DATABASE_URL, connect_args=connect_args)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
