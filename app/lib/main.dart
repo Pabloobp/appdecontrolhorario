@@ -1,14 +1,21 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:flutter/gestures.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'gestion_page.dart';
-import 'services/api_service.dart';
+import 'cambio_turno_page.dart';
+import 'services/supabase_service.dart';
+import 'config/app_config.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await initializeDateFormatting('es_ES', null);
+  await Supabase.initialize(
+    url: AppConfig.supabaseUrl,
+    anonKey: AppConfig.supabaseAnonKey,
+  );
   runApp(const ControlHorarioApp());
 }
 
@@ -280,7 +287,7 @@ class _SplashPageState extends State<SplashPage>
 
     _navigationTimer = Timer(const Duration(milliseconds: 2400), () async {
       if (!mounted) return;
-      final loggedIn = await ApiService.isLoggedIn();
+      final loggedIn = SupabaseService.isLoggedIn;
       if (!mounted) return;
       Navigator.of(context).pushReplacement(MaterialPageRoute(
         builder: (_) => loggedIn ? const HomeShellPage() : const LoginPage(),
@@ -380,7 +387,7 @@ class _LoginPageState extends State<LoginPage> {
     if (!(_formKey.currentState?.validate() ?? false)) return;
     setState(() { _loading = true; _errorMsg = null; });
     try {
-      await ApiService.login(
+      await SupabaseService.login(
         _emailController.text.trim(),
         _passwordController.text,
       );
@@ -388,6 +395,8 @@ class _LoginPageState extends State<LoginPage> {
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => const HomeShellPage()),
       );
+    } on AuthException catch (e) {
+      setState(() { _errorMsg = e.message; });
     } catch (e) {
       setState(() { _errorMsg = e.toString().replaceFirst('Exception: ', ''); });
     } finally {
@@ -575,17 +584,21 @@ class RegisterPage extends StatefulWidget {
 
 class _RegisterPageState extends State<RegisterPage> {
   final _formKey = GlobalKey<FormState>();
-  final _userController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _nombreController = TextEditingController();
+  final _apellidoController = TextEditingController();
   final _passController = TextEditingController();
-  final _empresaController = TextEditingController();
+  final _deptController = TextEditingController();
   bool _loading = false;
   String? _errorMsg;
 
   @override
   void dispose() {
-    _userController.dispose();
+    _emailController.dispose();
+    _nombreController.dispose();
+    _apellidoController.dispose();
     _passController.dispose();
-    _empresaController.dispose();
+    _deptController.dispose();
     super.dispose();
   }
 
@@ -593,16 +606,20 @@ class _RegisterPageState extends State<RegisterPage> {
     if (!(_formKey.currentState?.validate() ?? false)) return;
     setState(() { _loading = true; _errorMsg = null; });
     try {
-      await ApiService.register(
-        _userController.text.trim(),
-        _passController.text,
-        _empresaController.text.trim().isEmpty ? 'Mi Empresa' : _empresaController.text.trim(),
+      await SupabaseService.register(
+        email: _emailController.text.trim(),
+        password: _passController.text,
+        nombre: _nombreController.text.trim(),
+        apellido: _apellidoController.text.trim(),
+        departamento: _deptController.text.trim(),
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Cuenta creada. ¡Inicia sesión!')),
+        const SnackBar(content: Text('Cuenta creada. ¡Revisa tu correo y luego inicia sesión!')),
       );
       Navigator.of(context).pop();
+    } on AuthException catch (e) {
+      setState(() { _errorMsg = e.message; });
     } catch (e) {
       setState(() { _errorMsg = e.toString().replaceFirst('Exception: ', ''); });
     } finally {
@@ -639,9 +656,33 @@ class _RegisterPageState extends State<RegisterPage> {
                       ),
                       const SizedBox(height: 24),
                       TextFormField(
-                        controller: _userController,
+                        controller: _emailController,
+                        keyboardType: TextInputType.emailAddress,
                         decoration: const InputDecoration(
-                          labelText: 'Nombre de usuario',
+                          labelText: 'Correo electrónico',
+                          prefixIcon: Icon(Icons.alternate_email),
+                        ),
+                        validator: (v) {
+                          final email = v?.trim() ?? '';
+                          if (email.isEmpty) return 'Campo requerido';
+                          if (!email.contains('@')) return 'Correo inválido';
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 14),
+                      TextFormField(
+                        controller: _nombreController,
+                        decoration: const InputDecoration(
+                          labelText: 'Nombre',
+                          prefixIcon: Icon(Icons.person_outline),
+                        ),
+                        validator: (v) => (v?.trim().isEmpty ?? true) ? 'Campo requerido' : null,
+                      ),
+                      const SizedBox(height: 14),
+                      TextFormField(
+                        controller: _apellidoController,
+                        decoration: const InputDecoration(
+                          labelText: 'Apellido',
                           prefixIcon: Icon(Icons.person_outline),
                         ),
                         validator: (v) => (v?.trim().isEmpty ?? true) ? 'Campo requerido' : null,
@@ -654,15 +695,14 @@ class _RegisterPageState extends State<RegisterPage> {
                           labelText: 'Contraseña',
                           prefixIcon: Icon(Icons.lock_outline),
                         ),
-                        validator: (v) => (v?.length ?? 0) < 4 ? 'Mínimo 4 caracteres' : null,
+                        validator: (v) => (v?.length ?? 0) < 6 ? 'Mínimo 6 caracteres' : null,
                       ),
                       const SizedBox(height: 14),
                       TextFormField(
-                        controller: _empresaController,
+                        controller: _deptController,
                         decoration: const InputDecoration(
-                          labelText: 'Empresa (opcional)',
+                          labelText: 'Departamento (opcional)',
                           prefixIcon: Icon(Icons.business_outlined),
-                          hintText: 'Mi Empresa',
                         ),
                       ),
                       const SizedBox(height: 20),
@@ -722,18 +762,32 @@ class _HomeShellPageState extends State<HomeShellPage> {
 
   Future<void> _cargarHistorial() async {
     try {
-      final items = await ApiService.getHistorial();
+      final items = await SupabaseService.getMarcajesMes();
       if (!mounted) return;
+      final nuevosRegistros = <RegistroHorario>[];
+      for (final m in items) {
+        if (m['hora_entrada'] != null) {
+          nuevosRegistros.add(RegistroHorario(
+            tipo: TipoRegistro.entrada,
+            fecha: DateTime.parse(m['hora_entrada']).toLocal(),
+          ));
+        }
+        if (m['hora_salida'] != null) {
+          nuevosRegistros.add(RegistroHorario(
+            tipo: TipoRegistro.salida,
+            fecha: DateTime.parse(m['hora_salida']).toLocal(),
+          ));
+        }
+      }
+      // Sort newest first
+      nuevosRegistros.sort((a, b) => b.fecha.compareTo(a.fecha));
       setState(() {
         _registros
           ..clear()
-          ..addAll(items.map((e) => RegistroHorario(
-                tipo: e['tipo'] == 'ENTRADA' ? TipoRegistro.entrada : TipoRegistro.salida,
-                fecha: DateTime.parse(e['fecha_hora']),
-              )));
+          ..addAll(nuevosRegistros);
       });
     } catch (_) {
-      // Silenciar error si el backend no está disponible al iniciar
+      // Silenciar error si Supabase no está disponible al iniciar
     }
   }
 
@@ -744,8 +798,19 @@ class _HomeShellPageState extends State<HomeShellPage> {
   }
 
   bool get _jornadaAbierta {
-    if (_registros.isEmpty) return false;
-    return _registros.first.tipo == TipoRegistro.entrada;
+    // Jornada abierta si hay una entrada de HOY sin salida correspondiente
+    final hoy = DateTime.now();
+    final entradasHoy = _registros.where((r) =>
+        r.tipo == TipoRegistro.entrada &&
+        r.fecha.year == hoy.year &&
+        r.fecha.month == hoy.month &&
+        r.fecha.day == hoy.day).toList();
+    final salidasHoy = _registros.where((r) =>
+        r.tipo == TipoRegistro.salida &&
+        r.fecha.year == hoy.year &&
+        r.fecha.month == hoy.month &&
+        r.fecha.day == hoy.day).toList();
+    return entradasHoy.isNotEmpty && salidasHoy.isEmpty;
   }
 
   int get _entradas =>
@@ -782,9 +847,9 @@ class _HomeShellPageState extends State<HomeShellPage> {
   Future<void> _registrar(TipoRegistro tipo) async {
     try {
       if (tipo == TipoRegistro.entrada) {
-        await ApiService.ficharEntrada();
+        await SupabaseService.ficharEntrada();
       } else {
-        await ApiService.ficharSalida();
+        await SupabaseService.ficharSalida();
       }
       await _cargarHistorial();
     } catch (e) {
@@ -981,6 +1046,13 @@ class MenuPlaceholderPage extends StatelessWidget {
                             context,
                             MaterialPageRoute(
                               builder: (context) => GestionPage(),
+                            ),
+                          );
+                        } else if (item['icon'] == Icons.swap_horiz) {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const CambioTurnoPage(),
                             ),
                           );
                         }
@@ -2162,17 +2234,19 @@ class _PerfilPageState extends State<PerfilPage> {
 
   Future<void> _cargarPerfil() async {
     try {
-      final data = await ApiService.getMe();
+      final data = await SupabaseService.getPerfil();
       if (!mounted) return;
       setState(() {
-        _username = data['username']?.toString() ?? _username;
-        _empresa = data['empresa']?.toString() ?? _empresa;
+        _username = data != null
+            ? '${data['nombre'] ?? ''} ${data['apellido'] ?? ''}'.trim()
+            : (SupabaseService.currentUser?.email ?? '...');
+        _empresa = data?['departamento']?.toString() ?? '';
       });
     } catch (_) {}
   }
 
   Future<void> _logout() async {
-    await ApiService.deleteToken();
+    await SupabaseService.logout();
     if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => const LoginPage()),

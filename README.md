@@ -1,71 +1,52 @@
 # Control Horario App
 
-App de registro de fichajes de entrada y salida con autenticación JWT.
+App de registro de fichajes de entrada y salida con Supabase como backend.
 
-- **Backend:** Python FastAPI + SQLAlchemy + JWT + bcrypt
+- **Backend:** Supabase (PostgreSQL + Auth + REST API)
 - **Frontend:** Flutter (Android, iOS, Web, Windows)
 
 ## Estructura
 
 ```
 appdecontrolhorario/
-├── backend/          ← Servidor FastAPI
+├── supabase/
+│   └── schema.sql         ← Script SQL para crear tablas + RLS
+├── backend/               ← Servidor FastAPI (legacy, no requerido)
 │   ├── main.py
 │   ├── database.py
 │   ├── requirements.txt
 │   └── .env.example
-└── app/              ← Aplicación Flutter
+└── app/                   ← Aplicación Flutter
     ├── lib/
     │   ├── main.dart
     │   ├── gestion_page.dart
+    │   ├── cambio_turno_page.dart
     │   ├── config/
-    │   │   └── app_config.dart
+    │   │   └── app_config.dart       ← URL y key de Supabase
     │   └── services/
-    │       └── api_service.dart
+    │       ├── api_service.dart      ← (legacy)
+    │       └── supabase_service.dart ← Servicio Supabase
     └── pubspec.yaml
 ```
 
 ---
 
-## ⚡ Instalación rápida
+## 🗄️ 1. Configurar Supabase (Base de Datos)
 
-### 1. Clonar el repositorio
+1. Ve a [https://supabase.com](https://supabase.com) → tu proyecto
+2. Abre el **SQL Editor** (menú lateral izquierdo)
+3. Copia y pega el contenido de `supabase/schema.sql`
+4. Haz clic en **RUN** para crear todas las tablas y políticas RLS
 
-```bash
-git clone https://github.com/Pabloobp/appdecontrolhorario.git
-cd appdecontrolhorario
-```
-
----
-
-### 2. Configurar y arrancar el Backend
-
-```bash
-cd backend
-
-# Instalar dependencias
-pip install -r requirements.txt
-
-# Crear el archivo .env a partir del ejemplo
-cp .env.example .env
-```
-
-Edita el archivo `.env` si quieres cambiar la base de datos u otros valores.
-Por defecto usa **SQLite local** (`controlhorario.db`) — no necesitas instalar nada más.
-
-```bash
-# Arrancar el servidor
-python -m uvicorn main:app --reload
-```
-
-El backend estará en: **http://127.0.0.1:8000**
-Documentación Swagger: **http://127.0.0.1:8000/docs**
+Esto creará las tablas:
+- `usuarios` — perfiles de empleados (se crea automáticamente al registrarse)
+- `horarios` — horario semanal por empleado
+- `marcajes` — registro diario de entrada/salida
+- `cambios_turno` — solicitudes de cambio de turno
 
 ---
 
-### 3. Configurar el Frontend (Flutter)
-
-En **otra terminal**:
+## ⚡ 2. Configurar el Frontend (Flutter)
 
 ```bash
 cd app
@@ -74,49 +55,49 @@ cd app
 flutter pub get
 ```
 
-Abre `lib/config/app_config.dart` y ajusta la URL del backend según donde vayas a ejecutar la app:
+Las credenciales de Supabase ya están en `lib/config/app_config.dart`:
 
-| Plataforma | URL |
-|---|---|
-| Android emulator | `http://10.0.2.2:8000` ✅ (por defecto) |
-| iOS simulator / Web | `http://localhost:8000` |
-| Dispositivo físico | `http://TU_IP_LOCAL:8000` (ej: `http://192.168.1.10:8000`) |
+```dart
+static const String supabaseUrl = 'https://htmumknfebjqjvjwcvug.supabase.co';
+static const String supabaseAnonKey = 'sb_publishable_07XgshcqADVom9neTKotTA_4bnCRtR1';
+```
 
 ```bash
 # Ejecutar la app (elige dispositivo)
 flutter run
-```
 
----
-
-## 🗄️ Base de datos
-
-Por defecto, el backend usa **SQLite** (archivo `controlhorario.db` creado automáticamente).
-
-Si quieres usar **PostgreSQL / Supabase**, edita el `.env`:
-
-```env
-DATABASE_URL=postgresql://usuario:contraseña@host:5432/nombre_db
+# Para web
+flutter run -d chrome
 ```
 
 ---
 
 ## 📱 Funcionalidades
 
-| Función | Backend | Flutter |
-|---|---|---|
-| Registro de usuario | `POST /register` | Página de registro |
-| Login con JWT | `POST /login` | Página de login |
-| Datos de perfil | `GET /me` | Página de perfil |
-| Fichar entrada | `POST /fichar-entrada` | Botón "Entrada" |
-| Fichar salida | `POST /fichar-salida` | Botón "Salida" |
-| Ver historial | `GET /ver-mi-historial` | Página historial |
-| Cerrar sesión | — | Botón logout |
+| Función | Descripción |
+|---|---|
+| Login / Registro | Autenticación con Supabase Auth (email + contraseña) |
+| Dashboard | Ver estado de jornada, tiempo acumulado |
+| Check-in | Fichar entrada (se guarda en Supabase) |
+| Check-out | Fichar salida (se guarda en Supabase) |
+| Historial | Ver marcajes del mes actual |
+| Cambio de turno | Solicitar/aceptar/rechazar cambios con otros empleados |
+| Perfil | Ver datos del usuario y cerrar sesión |
+| Temas | 7 temas de color disponibles |
+
+---
+
+## 🔐 Seguridad (RLS)
+
+- Cada empleado solo puede ver y modificar sus propios datos
+- Los admins pueden ver datos de todos los empleados
+- Row Level Security habilitado en todas las tablas
+- Supabase Auth gestiona tokens y sesiones
 
 ---
 
 ## ✅ Requisitos
 
-- Python 3.9+
 - Flutter 3.x (`flutter --version` para verificar)
 - Git
+- Cuenta en [Supabase](https://supabase.com) (ya configurada)
